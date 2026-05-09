@@ -70,3 +70,4 @@ tmp/pdf_text/af2_paper.txt
 tmp/pdf_text/openfold.txt
 references.bib
 tests/test_neurips_paper_defaults.py
+tests/test_neurips_paper_defaults.py
