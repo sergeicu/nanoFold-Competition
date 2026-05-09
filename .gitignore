@@ -64,3 +64,9 @@ data/processed_features/6ann_C.error.txt
 data/processed_features/6su0_A.error.txt
 af2_paper.pdf
 /neurips_paper
+tests/test_neurips_anonymized_artifact.py
+tests/test_neurips_paper_defaults.py
+tmp/pdf_text/af2_paper.txt
+tmp/pdf_text/openfold.txt
+references.bib
+tests/test_neurips_paper_defaults.py
