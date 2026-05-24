@@ -217,5 +217,11 @@ the exact config copy of it can be found here - submissions/minalphafold2_REFERE
 
 remember that all the data was already downloaded and all the dependencies installed. do not attempt to do this here. 
 
+10. Finally - baseline run already exists here - 
+
+ls runs/minalphafold2_reference/ with checkpoints - check it out. 
+It was executed using this code - ls submissions/minalphafold2
+
+
 
 ultrathink. 
