@@ -1,5 +1,3 @@
-![nanoFold](assets/nanofold.png)
-
 # nanoFold: A Protein Folding Slowrun
 
 nanoFold is a data-efficiency competition for protein structure prediction. It is inspired by the nanoGPT slowrun: everyone trains under a fixed budget, and the leaderboard rewards models that learn more structure from the same amount of data.
@@ -8,45 +6,13 @@ The core bet is simple: biological data is expensive. Text and image models ofte
 
 This repo turns that idea into a benchmark. Participants get the same official train set, the same sample budget, and the same hidden evaluation path. Progress should come from better biological priors, better inductive biases, better objectives, better curricula, and better optimization under scarcity.
 
-## Start Here
+Note - we are training for 'limited' track only. Always run with `--limited` flag. 
 
-New to nanoFold? Follow the [Quickstart](docs/QUICKSTART.md) to set up the environment, download and preprocess the public official data, and start your first training run.
-
-## Documentation
-
-Start here:
-- [Quickstart: setup, data prep, and first training run](docs/QUICKSTART.md)
-- [Competition rules and official protocol](docs/COMPETITION.md)
-- [Submission API contract](docs/API.md)
-- [Data sources, splits, preprocessing, and tensor formats](docs/DATA.md)
-
-Useful deep links:
-- [Download and preprocess public data](docs/QUICKSTART.md#2-download-and-preprocess-public-data)
-- [Start a training run](docs/QUICKSTART.md#3-start-training)
-- [Run training on a Modal GPU](docs/QUICKSTART.md#optional-run-on-a-modal-gpu)
-- [Submit to the leaderboard](docs/QUICKSTART.md#6-submit-to-the-leaderboard)
-- [Allowed and disallowed data](docs/COMPETITION.md#2-allowed-and-disallowed-data)
-- [Scoring and ranking](docs/COMPETITION.md#8-scoring-and-ranking)
-- [Batch contract by mode](docs/API.md#batch-contract-by-mode)
-- [`run_batch` output contract](docs/API.md#run_batch-output-contract)
-- [Dataset split methodology](docs/DATA.md#3-how-dataset-splits-are-determined)
-- [Example model input sample](docs/DATA.md#5-example-model-input-sample)
-
-## What Counts As Progress
-
-nanoFold is not meant to be a pretrained-weight contest, a web-retrieval contest, or a race to find near-duplicate templates. The official tracks are deliberately strict:
-
-- fixed official data and manifests
-- no external structures, pretrained weights, external MSA retrieval, or network access
-- no template features in the official tracks
-- hidden ranking by area under the learning curve for fixed-budget tracks
-- atom14-aware scoring so methods are rewarded for more than Cα traces
-
-The intended question is: **given the same limited training set, who learns useful protein geometry fastest and best?**
+Your TODO task is clearly defined here - at the bottom of this file - under '# Your task' 
 
 ## How The Slowrun Works
 
-The `limited` and `research_large` tracks train for fixed sample budgets. Their hidden leaderboards evaluate multiple checkpoints and rank by `foldscore_auc_hidden`: trapezoidal area under hidden FoldScore versus cumulative samples seen.
+The `limited` track trains for fixed sample budgets. The hidden leaderboard evaluates multiple checkpoints and rank by `foldscore_auc_hidden`: trapezoidal area under hidden FoldScore versus cumulative samples seen.
 
 That makes early learning matter. A model that gets useful structure after 2,000 samples should beat a model that only wakes up at the end, even if their final scores are close. This is the pressure that should surface architectures with better biological priors.
 
@@ -137,6 +103,8 @@ The metadata builder projects broad secondary-structure fractions from domain ar
 
 ## Data Format
 
+
+
 Official preprocessing writes split artifacts per chain:
 - features: `data/processed_features/<encoded_chain_id>.npz`
 - labels: `data/processed_labels/<encoded_chain_id>.npz`
@@ -169,264 +137,85 @@ Config schema uses:
 - `data.processed_features_dir`
 - `data.processed_labels_dir`
 
-## Official Policy
 
-In `--official` mode, the runner applies override + validate:
-- immutable track constants are forced into config at startup
-- then policy validation and manifest hash checks run
-- model parameter cap is enforced from track policy (`model.max_params`)
+read more here - more here - nanoFold-Competition/docs/DATA.md
 
-This is implemented in:
-- `nanofold/competition_policy.py`
-- `train.py`
-- `eval.py`
-- `scripts/validate_submission.py`
 
-## Quickstart
+# Training 
 
-The fastest participant path is in [docs/QUICKSTART.md](docs/QUICKSTART.md). It covers:
+```
+cd /root/nanoFold-Competition/
+source .venv/bin/activate
 
-- environment setup
-- official public data download and preprocessing
-- first minAlphaFold2 tiny reference training run
-- public validation prediction and scoring
-- creating and validating a new submission
-- submitting a leaderboard pull request
+CUBLAS_WORKSPACE_CONFIG=:4096:8 python train.py \
+  --config submissions/minalphafold2/config.yaml \
+  --track limited --reset-run
 
-## Maintainer Hidden Assets
+# training should take around 15mins. 
+# Try to create a copy of submissions/minalphafold2/ and edit config file to do a dry run on a very small number of steps - .e.g change steps from 1,500 to 50. 
+# verify that it works 
 
-The committed public manifests are the participant data contract. Maintainers generate hidden validation privately against that fixed public split:
 
-```bash
-mkdir -p .nanofold_private/secrets
-python -c "import pathlib,secrets; pathlib.Path('.nanofold_private/secrets/hidden_split_salt.txt').write_text(secrets.token_urlsafe(48) + '\n')"
-chmod 600 .nanofold_private/secrets/hidden_split_salt.txt
-
-python scripts/build_hidden_manifest.py \
-  --hidden-split-salt-file .nanofold_private/secrets/hidden_split_salt.txt
-
-python scripts/verify_hidden_manifest.py
 ```
 
-This requires MMseqs2 on `PATH`, the locked OpenProteinSet chain cache, and `data/manifests/structure_metadata.json`. The salt file, hidden manifest, hidden labels, hidden fingerprints, and hidden locks stay under `.nanofold_private/` and must never be committed.
+# Score Public Validation
 
-If private hidden preprocessing finds unprocessable structures, record them only in `.nanofold_private/manifests/hidden_processability_exclusions.txt`, rerun `scripts/build_hidden_manifest.py`, and rerun `scripts/verify_hidden_manifest.py`.
-
-After the hidden manifest is written, build the hidden NPZs and pin their fingerprint:
+After training has written a checkpoint, generate public validation predictions:
 
 ```bash
-python scripts/prepare_data.py \
-  --data-root data/openproteinset \
-  --manifest .nanofold_private/manifests/hidden_val.txt \
-  --duplicate-chains-file data/openproteinset/pdb_data/duplicate_pdb_chains.txt \
-  --strict-downloads \
-  --no-template-hits \
-  --download-mmcif-subset
+mkdir -p runs/minalphafold2_reference/_forbid_labels
 
-python scripts/preprocess.py \
-  --raw-root data/openproteinset \
-  --mmcif-root data/openproteinset/pdb_data/mmcif_files \
-  --processed-features-dir .nanofold_private/hidden_processed_features \
-  --processed-labels-dir .nanofold_private/hidden_processed_labels \
-  --manifest .nanofold_private/manifests/hidden_val.txt \
-  --disable-templates
-
-python scripts/build_fingerprint.py \
-  --processed-features-dir .nanofold_private/hidden_processed_features \
-  --processed-labels-dir .nanofold_private/hidden_processed_labels \
-  --manifest hidden_val=.nanofold_private/manifests/hidden_val.txt \
+python predict.py \
+  --config submissions/minalphafold2/config.yaml \
+  --ckpt runs/minalphafold2_reference/checkpoints/ckpt_last.pt \
+  --split val \
   --track limited \
-  --source-lock leaderboard/official_manifest_source.lock.json \
-  --output .nanofold_private/leaderboard/official_hidden_fingerprint.json
-
-python scripts/pin_hidden_assets.py \
-  --hidden-manifest .nanofold_private/manifests/hidden_val.txt \
-  --hidden-features-dir .nanofold_private/hidden_processed_features \
-  --hidden-labels-dir .nanofold_private/hidden_processed_labels \
-  --hidden-fingerprint .nanofold_private/leaderboard/official_hidden_fingerprint.json \
-  --track-id limited \
-  --lock-file .nanofold_private/leaderboard/private_hidden_assets.lock.json
+  --official \
+  --forbid-labels-dir runs/minalphafold2_reference/_forbid_labels \
+  --pred-out-dir runs/minalphafold2_reference/public_predictions \
+  --save runs/minalphafold2_reference/predict_val.json
 ```
 
-Public outputs land in stable, commit-safe paths:
-- `data/manifests/train.txt`
-- `data/manifests/val.txt`
-- `data/manifests/all.txt`
-- `leaderboard/official_dataset_fingerprint.json`
-- `leaderboard/official_manifest_source.lock.json`
-
-Maintainer-only outputs land under `.nanofold_private/`:
-- `.nanofold_private/manifests/hidden_val.txt`
-- `.nanofold_private/manifests/split_quality_report.json`
-- `.nanofold_private/manifests/hidden_processability_exclusions.txt`
-- `.nanofold_private/hidden_processed_features/`
-- `.nanofold_private/hidden_processed_labels/`
-- `.nanofold_private/leaderboard/official_hidden_fingerprint.json`
-- `.nanofold_private/leaderboard/private_hidden_assets.lock.json`
-- `.nanofold_private/leaderboard/private_hidden_manifest_source.lock.json`
-- `.nanofold_private/leaderboard/official_data_source.lock.json`
-
-The metadata builder also writes `data/manifests/structure_candidates.txt` as an ignored local audit artifact. Commit only public manifests, the public dataset fingerprint, and sanitized public lock metadata.
-
-Full public-data rebuilds are maintainer operations for changing the official public data contract:
+Then score those predictions:
 
 ```bash
-bash scripts/full_official_data_refresh.sh --rewrite-lock
+python score.py \
+  --prediction-summary runs/minalphafold2_reference/predict_val.json \
+  --features-dir data/processed_features \
+  --labels-dir data/processed_labels \
+  --save runs/minalphafold2_reference/eval_val.json \
+  --per-chain-out runs/minalphafold2_reference/per_chain_scores_val.jsonl
 ```
 
-## Hidden Leaderboard Runs
+Public validation is for debugging and iteration. The leaderboard ranking uses the sealed hidden validation path.
 
-Hidden leaderboard runs are maintainer-only. The prediction stage sees submission code plus hidden features. The scoring stage sees saved predictions plus hidden labels. Submission code is never imported during hidden scoring.
 
-Hidden mode uses `.nanofold_private/` by default. Override these only when hidden assets live elsewhere:
-- `NANOFOLD_HIDDEN_MANIFEST`
-- `NANOFOLD_HIDDEN_FEATURES_DIR`
-- `NANOFOLD_HIDDEN_LABELS_DIR`
-- `NANOFOLD_HIDDEN_FINGERPRINT`
-- `NANOFOLD_HIDDEN_LOCK_FILE`
+# Official codebase (easy to read)
 
-Canonical runner entrypoint:
+Sample code for training is given here `submissions/minalphafold2/` 
 
-```bash
-python scripts/run_official.py \
-  --submission submissions/<name> \
-  --track <track_id> \
-  --team "<team or individual name>" \
-  --update-leaderboard
-```
+It implements code from this repository - https://github.com/ChrisHayduk/minAlphaFold2
 
-Hidden leaderboard runs require a sealed no-network runtime. The supported path is:
+minAlphaFold2 is a direct, readable AlphaFold2-style implementation with an Evoformer trunk, recycling, invariant point attention, and structure-module atom14 coordinate generation. It gives nanoFold a biological-prior reference submission with a compact AlphaFold2-style training stack: masked-MSA, distogram, backbone and all-atom FAPE, torsion, and pLDDT objectives.
 
-```bash
-bash scripts/run_official_docker.sh \
-  --submission submissions/<name> \
-  --track <track_id> \
-  --team "<team or individual name>" \
-  --update-leaderboard
-```
 
-The Docker image build context intentionally excludes generated datasets, private hidden assets, local Python environments, checkpoints, and run outputs. Hidden data is mounted read-only during the prediction and scoring stages.
+# Your task 
 
-Maintainers can run the same two-stage hidden evaluation on Modal when the checkpoint already lives in the `nanofold-runs` Modal volume:
+1. Do a dry run with very minimal data (change the max-steps in config - e.g. 50 steps instead of 1500). Verify that training works. Verify that predict.py works on this dry run. Verify that score.py works on this dry run. Verify that everything loads on GPU correctly always. 
+2. Perform investigation on the output format and what it means. Write a detailed guide in a separate .md file of your understanding. 
+3. Create a plan of how you are going to track performance of training and outputs (score.py and predictions.py) such that you can improve model performance. 
+4. If necessary - i have installed weights and biases on this machine with my account - and wandb mcp - you can use this ability to put certain checkpoints to monitor training - and then read the logs to see how you can improve the cod. 
+5. ONce you understand how to do a dry training run, what kind of outputs are produced by predict.py and score.py, and how to insert wandb logs to monitor runs - then you must produce a plan - detailed plan - on how to beat the baseline performance. 
+6. To run a baseline performance you run training run on 1500 steps - 
+the exact config copy of it can be found here - submissions/minalphafold2_REFERENCE/config.yaml 
 
-```bash
-modal run scripts/modal_official.py \
-  --upload-public-data \
-  --upload-hidden-assets \
-  --upload-only
-```
+7. Create a detailed plan for how you may beat the baseline. 
+8. TO help you - perform deep research into how this repo actually works - for this you may find useful to read this repo -  https://github.com/ChrisHayduk/minAlphaFold2  -which is implemented in the refrence submission - `submissions/minalphafold2/` . 
 
-```bash
-modal run scripts/modal_official.py \
-  --submission submissions/<name> \
-  --config submissions/<name>/config.yaml \
-  --track <track_id> \
-  --team "<team or individual name>" \
-  --update-leaderboard
-```
 
-For long Modal runs, launch the prediction and scoring stages as detached calls, then download the durable result artifact and update the local leaderboard:
+9. Make sure you create detailed plans as .md and reports of your understand of what you need to do (task.md) and your understand of the outputss and everything else - all in one folder called serge_v1/. It must be in root of this repository. 
 
-```bash
-modal run --detach scripts/modal_official.py \
-  --submission submissions/<name> \
-  --config submissions/<name>/config.yaml \
-  --track <track_id> \
-  --team "<team or individual name>" \
-  --skip-score \
-  --background-predict
-```
+remember that all the data was already downloaded and all the dependencies installed. do not attempt to do this here. 
 
-```bash
-modal run --detach scripts/modal_official.py \
-  --submission submissions/<name> \
-  --config submissions/<name>/config.yaml \
-  --track <track_id> \
-  --team "<team or individual name>" \
-  --skip-predict \
-  --background-score
-```
 
-```bash
-modal volume get nanofold-runs <run_name>/modal_official_result.json runs/<run_name>/modal_official_result.json
-python scripts/add_leaderboard_entry.py \
-  --result runs/<run_name>/modal_official_result.json \
-  --leaderboard leaderboard/leaderboard.json \
-  --readme README.md \
-  --description "<leaderboard description>" \
-  --team "<team or individual name>"
-```
-
-Use the upload command the first time a Modal environment is prepared, or whenever public/hidden assets change. Hidden Modal execution uses separate no-network prediction and scoring functions; hidden labels are not mounted during prediction. Both Modal stages request the configured GPU because atom14 structural scoring is pairwise-distance heavy.
-
-Hidden lock metadata is maintainer-local and ignored by git. Populate/update it with `python scripts/pin_hidden_assets.py ...`.
-
-## Manifest Reproducibility
-
-Check committed official manifest hashes:
-
-```bash
-shasum -a 256 data/manifests/train.txt data/manifests/val.txt data/manifests/all.txt
-```
-
-Expected public manifest values for all tracks:
-- `train.txt`: `d36d1f77ba43b7c4509a6e9dfd3f9414e1ce60f8364b24e0086c1734ba6aef6d`
-- `val.txt`: `d4a0265bcd0a021e116c0c889f21e86bc24006460bcc42dec2f9a80b70c8812b`
-- `all.txt`: `0d1b21a3536cd0c602be301993fcbacd8ecc5710a459c239f9808d164d0ee85d`
-
-Maintainer-only manifest regeneration:
-
-```bash
-bash scripts/regenerate_official_manifests.sh --rewrite-lock
-```
-
-Sync public hashes/counts across pinned references (track + lock + docs):
-
-```bash
-python scripts/sync_official_manifest_hashes.py
-```
-
-## Submitter Self-Check
-
-```bash
-python scripts/validate_submission.py \
-  --submission submissions/<your_name> \
-  --track <track_id> \
-  --strict
-
-if git diff --name-only origin/main...HEAD | grep -Eq '^data/manifests/(train|val|all)\.txt$'; then
-  echo "ERROR: PR edits protected manifests. Ask maintainer for explicit approval label."
-  exit 1
-fi
-
-echo "Self-check passed."
-```
-
-CI enforces the same PR guardrail:
-- edits to `data/manifests/train.txt`, `data/manifests/val.txt`, or `data/manifests/all.txt` fail unless label `manifest-change-approved` is present.
-
-## Repo Map
-
-- `docs/`: data guide, API contract, and official competition protocol
-- `tracks/`: track policy definitions
-- `configs/`: official/research config profiles
-- `scripts/setup_official_data.sh`: official participant setup
-- `scripts/setup_custom_data.sh`: research/custom manifest setup
-- `scripts/build_manifests.py`: maintainer manifest generation
-- `scripts/sync_official_manifest_hashes.py`: sync official manifest hashes across track/lock/docs
-- `scripts/build_fingerprint.py`: split dataset fingerprint generator
-- `scripts/run_official.py`: canonical official validate/train/eval/result runner
-- `scripts/run_official_docker.sh`: no-network official container runner
-- `scripts/modal_official.py`: maintainer-only Modal hidden evaluation runner
-- `nanofold/submission_runtime.py`: runtime API enforcement
-- `third_party/minAlphaFold2`: pinned upstream minAlphaFold2 implementation used by `submissions/minalphafold2`
-- `leaderboard/`: leaderboard and official lock/fingerprint artifacts
-
-## Leaderboard
-
-<!-- LEADERBOARD_START -->
-### `limited`
-| # | Name | Team | Rank Score | Hidden FoldScore | Public FoldScore | Date | Commit | Description |
-|---:|---|---|---:|---:|---:|---|---|---|
-| 1 | [minalphafold2_full](submissions/minalphafold2_full) | nanoFold Maintainers | 0.2634 | 0.3423 | 0.3426 | 2026-05-01 | `85f8c9c` | minAlphaFold2 full profile limited-track benchmark |
-<!-- LEADERBOARD_END -->
+ultrathink. 
